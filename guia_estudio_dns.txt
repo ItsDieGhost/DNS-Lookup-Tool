@@ -411,7 +411,3 @@ R: 1) Comprension del modelo OSI (capa de aplicacion)
    5) Seguridad: validacion, rate limiting, HTTPS
    6) Frontend moderno con React
    7) Manejo de errores y casos borde
-
-================================================================================
-                        FIN DE LA GUIA DE ESTUDIO
-================================================================================
