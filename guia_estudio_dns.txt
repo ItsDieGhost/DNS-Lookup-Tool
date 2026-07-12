@@ -1,0 +1,417 @@
+================================================================================
+                        GUIA DE ESTUDIO - DNS LOOKUP TOOL
+                              Proyecto Universitario
+================================================================================
+
+INDICE
+  1. Introduccion al DNS
+  2. Modelo OSI: Capa de Aplicacion
+  3. Tipos de Registros DNS
+  4. Resolucion de Nombres (Iterativa vs Recursiva)
+  5. El modulo dns de Node.js
+  6. Arquitectura Cliente-Servidor
+  7. Validacion y Seguridad de Inputs
+  8. Cache de Resultados
+  9. HTTPS y Rate Limiting
+  10. Buenas Practicas con React y Tailwind
+  11. Glosario de Terminos
+  12. Preguntas Frecuentes (FAQ)
+
+================================================================================
+1. INTRODUCCION AL DNS
+================================================================================
+
+DNS (Domain Name System) es el sistema de nombres de dominio. Su funcion 
+principal es traducir nombres legibles por humanos (como google.com) a 
+direcciones IP (como 142.250.184.78) que las computadoras usan para 
+comunicarse.
+
+Sin DNS, tendriamos que recordar numeros como 8.8.8.8 en vez de google.com.
+
+Caracteristicas fundamentales:
+- Es una base de datos distribuida jerarquicamente
+- Funciona en la capa de aplicacion del modelo OSI (capa 7)
+- Usa tanto UDP (puerto 53) como TCP (puerto 53) para transporte
+- Es uno de los protocolos mas criticos de internet: sin el, internet no 
+  funcionaria para el usuario comun
+
+Jerarquia del DNS:
+  Raiz (".") → Dominios de nivel superior (TLD) → Dominio principal → Subdominios
+      .             .com, .org, .net                 google.com      www.google.com
+
+================================================================================
+2. MODELO OSI: CAPA DE APLICACION (Capa 7)
+================================================================================
+
+El modelo OSI tiene 7 capas. DNS opera en la capa 7 (Aplicacion).
+
+  Capa 7 - Aplicacion  ← DNS opera aqui
+  Capa 6 - Presentacion
+  Capa 5 - Sesion
+  Capa 4 - Transporte   (TCP/UDP, puerto 53)
+  Capa 3 - Red         (IP)
+  Capa 2 - Enlace      (Ethernet, WiFi)
+  Capa 1 - Fisica      (Cables, ondas)
+
+Por que DNS esta en capa 7?
+- Es un protocolo que el usuario "toca" directamente (aunque sin saberlo)
+- Depende de capas inferiores para el transporte
+- Proporciona una funcionalidad de red util al usuario: traducir nombres a IPs
+- Otros protocolos de capa 7 incluyen: HTTP, FTP, SMTP, SSH
+
+En este proyecto, el backend actua como un cliente DNS que consulta servidores 
+DNS reales usando el protocolo DNS nativo. El frontend se comunica con el 
+backend via HTTP (otro protocolo de capa 7), creando una interaccion entre 
+dos protocolos de aplicacion: DNS y HTTP.
+
+================================================================================
+3. TIPOS DE REGISTROS DNS
+================================================================================
+
+REGISTRO A (Address):
+  Traduce un nombre de dominio a una direccion IPv4 (32 bits).
+  Ej: google.com → 142.250.184.78
+  Formato: nombre, TTL, clase, tipo, direccion IPv4
+  Se usa para: encontrar servidores web, de correo, etc.
+
+REGISTRO AAAA (Quad-A):
+  Traduce un nombre de dominio a una direccion IPv6 (128 bits).
+  Ej: google.com → 2607:f8b0:4000:800::200e
+  Se usa para: conectividad IPv6 nativa.
+
+REGISTRO MX (Mail Exchange):
+  Define los servidores de correo que reciben emails para el dominio.
+  Incluye prioridad: menor numero = mayor prioridad.
+  Ej: google.com → 10 smtp.google.com
+  Se usa para: enrutamiento de correo electronico.
+
+REGISTRO TXT (Text):
+  Almacena texto arbitrario asociado al dominio.
+  Usos comunes:
+    - SPF (Sender Policy Framework): autoriza servidores a enviar correo
+    - DKIM: clave publica para firmar correos
+    - DMARC: politica de autenticacion de correo
+    - Verificacion de propiedad del dominio (Google, Microsoft)
+  Ej: "v=spf1 include:_spf.google.com ~all"
+
+REGISTRO NS (Name Server):
+  Indica que servidores DNS son autoritativos para el dominio.
+  Ej: google.com → ns1.google.com, ns2.google.com
+  Fundamental para la delegacion de zonas DNS.
+
+REGISTRO CNAME (Canonical Name):
+  Crea un alias de un dominio a otro.
+  Ej: www.ejemplo.com → ejemplo.com
+  Importante: un dominio con CNAME no puede tener otros registros (A, MX, etc.)
+
+REGISTRO SOA (Start of Authority):
+  Contiene informacion administrativa de la zona DNS:
+    - nsname: servidor primario
+    - hostmaster: email del administrador
+    - serial: version de la zona (incrementa con cada cambio)
+    - refresh: cada cuanto los secundarios revisan cambios
+    - retry: cuanto esperar si falla la revision
+    - expire: cuando expira la zona si no se puede refrescar
+    - minttl: TTL minimo para respuestas negativas
+
+REGISTRO PTR (Pointer):
+  Resolucion inversa: de direccion IP a nombre de dominio.
+  Ej: 8.8.8.8 → dns.google
+  Se usa para verificacion de identidad (ej. servidores de correo verifican
+  que la IP del remitente coincide con su dominio PTR).
+
+================================================================================
+4. RESOLUCION DE NOMBRES
+================================================================================
+
+Resolucion Recursiva (la mas comun):
+  El cliente pregunta a un resolver (ej. 8.8.8.8) que hace todas las consultas 
+  necesarias hasta obtener la respuesta final. El cliente solo hace UNA consulta.
+
+  Cliente → Resolver → Raiz → TLD → Autoritativo → IP
+
+Resolucion Iterativa (usada entre servidores):
+  Cada servidor responde con la siguiente direccion a consultar, sin resolver
+  la consulta completa. El que pregunta debe seguir las referencias.
+
+Pasos tipicos de resolucion:
+  1. El navegador revisa cache local del sistema operativo
+  2. Si no esta, pregunta al resolver configurado (ISP, Google, Cloudflare)
+  3. El resolver consulta al servidor raiz (.) quien gestiona .com
+  4. El resolver consulta al servidor TLD (.com) quien tiene los NS de google.com
+  5. El resolver consulta al servidor autoritativo (ns1.google.com) que da la IP
+  6. El resolver responde al cliente con la IP y TTL
+
+En este proyecto:
+  - El backend actua como un cliente DNS que hace consultas NO recursivas
+    a traves del resolver configurado en el sistema operativo
+  - El modulo nativo dns.node.js expone funciones que encapsulan toda esta
+    logica en llamadas simples como dnsPromises.resolve4('google.com')
+
+================================================================================
+5. EL MODULO DNS DE NODE.JS
+================================================================================
+
+Node.js incluye un modulo nativo llamado "dns" que permite hacer consultas 
+DNS sin instalar librerias externas. Esto demuestra que Node ya trae 
+herramientas de bajo nivel para resolucion de nombres.
+
+Metodos principales (usando dnsPromises):
+
+  resolve4(hostname, { ttl: true })
+    Resuelve registros A. Con { ttl: true } devuelve objetos con 
+    { address: string, ttl: number } en vez de solo strings.
+
+  resolve6(hostname, { ttl: true })
+    Resuelve registros AAAA. Igual que resolve4 pero IPv6.
+
+  resolveMx(hostname)
+    Resuelve registros MX. Devuelve [{ priority, exchange }].
+
+  resolveTxt(hostname)
+    Resuelve registros TXT. Devuelve array de arrays de strings.
+
+  resolveNs(hostname)
+    Resuelve registros NS. Devuelve array de strings.
+
+  resolveCname(hostname)
+    Resuelve registros CNAME. Devuelve array de strings.
+
+  resolveSoa(hostname)
+    Resuelve registros SOA. Devuelve un objeto con propiedades:
+    nsname, hostmaster, serial, refresh, retry, expire, minttl.
+
+  reverse(ip)
+    Resolucion PTR inversa. Devuelve array de hostnames.
+
+dns.Resolver vs dnsPromises:
+  dns.Resolver permite crear instancias con servidores personalizados usando
+  setServers(). Sin embargo, sus metodos solo soportan callbacks (no promesas
+  directamente). Para usarlos con async/await se usa util.promisify():
+
+    const { promisify } = require('util');
+    const resolver = new dns.Resolver();
+    resolver.setServers(['8.8.8.8']);
+    const resolve4 = promisify(resolver.resolve4.bind(resolver));
+    const result = await resolve4(domain, { ttl: true });
+
+Medicion de tiempo:
+  performance.now() devuelve milisegundos con precision de sub-milisegundo.
+  Se toma antes y despues de cada consulta para medir latencia.
+
+================================================================================
+6. ARQUITECTURA CLIENTE-SERVIDOR
+================================================================================
+
+El proyecto sigue una arquitectura clasica de dos capas:
+
+  Frontend (React + Vite) ←→ Backend (Express + dns.node) ←→ Servidores DNS
+
+Frontend:
+  - Framework: React 18 con Vite como bundler
+  - Estilos: Tailwind CSS con modo oscuro/claro
+  - Comunicacion: fetch nativo (sin axios)
+  - Proxy de desarrollo: Vite redirige /api/* a backend en puerto 7000
+  - Estado: hooks personalizados (useDnsLookup, useSearchHistory)
+
+Backend:
+  - Framework: Express.js
+  - Middleware: CORS, JSON parser, rate limiting
+  - Logica DNS: modulo nativo dns (sin dependencias externas)
+  - Cache: Map en memoria con TTL de 30 segundos
+  - Endpoints RESTful: /api/dns/lookup, /api/dns/compare, etc.
+
+Flujo de datos:
+  1. Usuario ingresa dominio en el formulario React
+  2. Frontend valida y sanitiza el input
+  3. Frontend hace fetch a /api/dns/lookup?domain=...
+  4. Vite proxy redirige la solicitud al backend
+  5. Backend valida nuevamente el input
+  6. Backend consulta DNS usando modulo nativo
+  7. Backend arma respuesta JSON y la devuelve
+  8. Frontend renderiza los resultados en cards o tabla
+
+================================================================================
+7. VALIDACION Y SEGURIDAD DE INPUTS
+================================================================================
+
+Validacion en Frontend (DomainForm.jsx):
+  - type="url" en el input: el navegador da autocorreccion gratis
+  - Limpieza de URLs pegadas: extrae hostname de URLs completas
+  - Regex de dominio: /^(?!:\/\/)([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/
+  - Deteccion de IPv4 con regex y verificacion de rango (0-255)
+  - Feedback visual inmediato con mensajes de error en rojo
+
+Validacion en Backend (validators.js):
+  - Sanitizacion: elimina caracteres de control (null bytes, etc.)
+  - Rechaza caracteres no-ASCII
+  - Limita longitud: maximo 253 caracteres para dominio
+  - Limita longitud de IP: maximo 15 caracteres
+  - Limita tamano total del input: 500 caracteres
+
+Rate Limiting (app.js):
+  - express-rate-limit: maximo 100 requests cada 15 minutos por IP
+  - Headers estandar: X-RateLimit-Limit, X-RateLimit-Remaining
+  - Mensaje de error en espanol amigable
+
+Seguridad adicional:
+  - express.json({ limit: '1kb' }) limita tamano del body
+  - HTTPS en desarrollo con certificados autofirmados de Vite
+  - Manejo centralizado de errores con error handler de Express
+  - No se exponen secretos ni claves API (no se necesitan)
+
+================================================================================
+8. CACHE DE RESULTADOS
+================================================================================
+
+Implementacion:
+  - Map de JavaScript en memoria
+  - Clave: combinacion de dominio + tipos + servidores DNS
+  - Valor: datos de respuesta + timestamp
+  - TTL: 30 segundos
+  - Maximo 100 entradas en cache (elimina la mas vieja al superar el limite)
+
+Ventajas:
+  - Reduce latencia en consultas repetidas
+  - Reduce carga en servidores DNS externos
+  - Demuestra conocimiento de tecnicas de cache
+
+El flag "fromCache: true" se incluye en la respuesta JSON y se muestra en el 
+frontend como un badge "CACHE" junto al timestamp.
+
+================================================================================
+9. HTTPS Y RATE LIMITING
+================================================================================
+
+HTTPS en desarrollo:
+  Vite soporta HTTPS nativo con server.https: true en vite.config.js.
+  Genera certificados autofirmados automaticamente. Aunque el navegador
+  muestra advertencia de seguridad, permite probar flujos HTTPS reales.
+
+Rate Limiting:
+  Mecanismo de seguridad que limita el numero de solicitudes que un cliente
+  puede hacer en un periodo de tiempo. Previene:
+    - Ataques de denegacion de servicio (DoS)
+    - Abuso de recursos del servidor
+    - Scraping automatizado
+
+  Configuracion usada: 100 requests por 15 minutos por IP.
+
+================================================================================
+10. BUENAS PRACTICAS CON REACT Y TAILWIND
+================================================================================
+
+React:
+  - Componentes funcionales con hooks (useState, useCallback, useEffect)
+  - Custom hooks para separar logica de negocio (useDnsLookup, useSearchHistory)
+  - useCallback para memoizar funciones y evitar re-renders innecesarios
+  - Comunicacion con backend via servicios separados (api.js)
+  - Estados de carga, error y datos vacios considerados
+
+Tailwind CSS:
+  - Diseno utilitario: clases en lugar de CSS personalizado
+  - Modo oscuro con clase "dark" en el elemento html
+  - Variantes dark: para colores en modo oscuro
+  - Paleta consistente: cian para acciones, grises para fondos
+  - Responsive: max-w-4xl se adapta a pantallas grandes
+  - Transiciones suaves: transition-colors en cambios de tema
+
+Componentes del proyecto:
+  - DomainForm: formulario con validacion y tipos seleccionables
+  - RecordCard: tarjeta con estilo por tipo (color de borde izquierdo)
+  - RecordTable: vista tabular alternativa
+  - ResponseTimeChart: barras horizontales de tiempo por tipo
+  - RecordSkeleton: animacion pulse durante carga
+  - ThemeToggle: cambio modo oscuro/claro
+  - SearchHistory: historial en localStorage
+  - ResolverComparison: tabla comparativa de resolvers
+
+================================================================================
+11. GLOSARIO DE TERMINOS
+================================================================================
+
+  DNS - Domain Name System. Sistema que traduce nombres de dominio a IPs.
+
+  TTL - Time To Live. Tiempo en segundos que un registro DNS puede ser
+        cacheado antes de pedir una nueva copia.
+
+  TLD - Top-Level Domain. La ultima parte del dominio (.com, .org, .net).
+
+  Resolver - Servidor DNS que resuelve consultas de forma recursiva
+             (ej. 8.8.8.8, 1.1.1.1).
+
+  Autoritativo - Servidor DNS que tiene la informacion oficial de un dominio.
+
+  SOA - Start of Authority. Registro con informacion administrativa de la zona.
+
+  SPF - Sender Policy Framework. Sistema que previene falsificacion de correo.
+
+  DKIM - DomainKeys Identified Mail. Firma digital de correos electronicos.
+
+  DMARC - Domain-based Message Authentication. Politica de autenticacion.
+
+  CNAME - Canonical Name. Alias de un dominio a otro.
+
+  PTR - Pointer. Resolucion inversa (IP → nombre).
+
+  Rate Limiting - Limite de requests por tiempo para prevenir abusos.
+
+  Cache - Almacenamiento temporal de resultados para acelerar respuestas.
+
+  OSI - Open Systems Interconnection. Modelo de 7 capas para redes.
+
+  DoH - DNS over HTTPS. DNS cifrado usando protocolo HTTPS.
+
+  DoT - DNS over TLS. DNS cifrado usando TLS.
+
+================================================================================
+12. PREGUNTAS FRECUENTES (FAQ)
+================================================================================
+
+P: Por que no se puede consultar DNS directamente desde el navegador?
+R: Por restricciones de seguridad CORS y porque los navegadores no exponen
+   APIs de socket a JavaScript. Necesitas un backend que haga la consulta
+   DNS real.
+
+P: Que diferencia hay entre dnsPromises y dns.Resolver?
+R: dnsPromises usa el resolver del sistema operativo. dns.Resolver permite
+   especificar servidores DNS personalizados con setServers().
+
+P: Por que usar modulo nativo dns en vez de una API externa?
+R: El modulo nativo no requiere dependencias externas, es mas rapido (no
+   hay HTTP request extra), funciona offline (con DNS local), y no tiene
+   limites de API de terceros.
+
+P: Que significa TTL y por que es importante?
+R: TTL indica cuantos segundos un resultado DNS puede ser cacheado. TTL
+   bajo (60s) significa cambios rapidos. TTL alto (86400s = 24h) significa
+   configuracion estable. Es critico para migraciones: si vas a cambiar la IP
+   de un dominio, baja el TTL dias antes.
+
+P: Que es NXDOMAIN?
+R: Respuesta del servidor DNS indicando que el dominio no existe. Es
+   diferente de ENODATA, que significa que el dominio existe pero no tiene
+   registros del tipo solicitado.
+
+P: Como funciona exactamente la comparacion de resolvers?
+R: Se crean instancias separadas de dns.Resolver, cada una configurada con
+   un servidor DNS distinto. Se ejecutan las mismas consultas en paralelo
+   y se comparan los resultados lado a lado.
+
+P: Para que sirve el registro SOA?
+R: SOA contiene metadata de la zona DNS: quien es el admin, cuando se
+   actualizo por ultima vez (serial), y los intervalos de sincronizacion
+   entre servidores primarios y secundarios.
+
+P: Que demonstra este proyecto a nivel universitario?
+R: 1) Comprension del modelo OSI (capa de aplicacion)
+   2) Funcionamiento del protocolo DNS
+   3) Arquitectura cliente-servidor
+   4) Uso de modulos nativos de Node.js
+   5) Seguridad: validacion, rate limiting, HTTPS
+   6) Frontend moderno con React
+   7) Manejo de errores y casos borde
+
+================================================================================
+                        FIN DE LA GUIA DE ESTUDIO
+================================================================================

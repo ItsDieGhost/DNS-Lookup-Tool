@@ -1,0 +1,17 @@
+{
+  "name": "dns-lookup-tool-backend",
+  "version": "1.0.0",
+  "description": "Backend for DNS Lookup Tool - Node.js with native dns module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": ["dns", "lookup", "network"],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5"
+  }
+}

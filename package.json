@@ -1,0 +1,9 @@
+{
+  "name": "dns-lookup-tool",
+  "private": true,
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev": "npx concurrently -n BE,FE -c cyan,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "start": "npx concurrently -n BE,FE -c cyan,magenta \"npm start --prefix backend\" \"npm run dev --prefix frontend\""
+  }
+}

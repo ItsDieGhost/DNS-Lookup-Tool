@@ -1,0 +1,344 @@
+================================================================================
+               EJEMPLOS DE PRUEBA - DNS LOOKUP TOOL
+                      Proyecto Universitario
+================================================================================
+
+Este archivo contiene casos de prueba organizados por concepto, con el
+comportamiento esperado y la interpretacion de cada resultado.
+
+INDICE
+  1. Pruebas de Validacion de Input
+  2. Dominios con todos los Tipos de Registro
+  3. Dominios con Casos Especiales
+  4. Pruebas de Resolucion Inversa (PTR)
+  5. Pruebas de Comparacion de Resolvers
+  6. Pruebas de Cache
+  7. Pruebas de Errores
+  8. Pruebas de Rate Limiting
+  9. Ejercicios Practicos para el Estudiante
+
+================================================================================
+1. PRUEBAS DE VALIDACION DE INPUT
+================================================================================
+
+Caso 1.1: Dominio valido basico
+  Input: google.com
+  Resultado esperado: Consulta exitosa, muestra registros A, AAAA, MX, etc.
+  Interpretacion: El dominio mas basico, debe funcionar siempre.
+
+Caso 1.2: URL completa pegada
+  Input: https://www.google.com/search?q=hola
+  Resultado esperado: El sistema limpia automaticamente → consulta google.com
+  Interpretacion: La funcion cleanInput() extrae el hostname de la URL.
+
+Caso 1.3: URL con protocolo http
+  Input: http://github.com
+  Resultado esperado: Se limpia a github.com, consulta exitosa.
+  Interpretacion: Funciona igual para http y https.
+
+Caso 1.4: String vacio
+  Input: (dejar vacio, presionar Enter)
+  Resultado esperado: Boton deshabilitado o mensaje "Ingresa un dominio o IP"
+  Interpretacion: Validacion de campo requerido.
+
+Caso 1.5: Dominio sin punto
+  Input: holamundo
+  Resultado esperado: "Formato invalido. Ej: google.com o 8.8.8.8"
+  Interpretacion: Regex rechaza dominios sin TLD.
+
+Caso 1.6: Dominio con espacios
+  Input: google .com
+  Resultado esperado: "Formato invalido"
+  Interpretacion: Los espacios rompen el patron del dominio.
+
+Caso 1.7: Dominio con caracteres especiales
+  Input: google!.com
+  Resultado esperado: "Formato invalido"
+  Interpretacion: Solo letras, numeros y guiones en el nombre.
+
+Caso 1.8: Dominio con caracteres no-ASCII
+  Input: esempio.com (se usa caracter no-ASCII)
+  (Nota: en realidad "e" con acento no es ASCII, pero "esempio" si lo es.
+   Usar: aacute.com o cualquier cosa con tildes/acentos)
+  Resultado esperado: Rechazado por validacion backend
+  Interpretacion: Los nombres de dominio solo admiten ASCII.
+
+================================================================================
+2. DOMINIOS CON TODOS LOS TIPOS DE REGISTRO
+================================================================================
+
+Caso 2.1: Google - El dominio mas completo
+  Input: google.com, todos los tipos
+  Resultados esperados:
+    A: Varias IPs (142.250.x.x)
+    AAAA: IPs IPv6 (2607:f8b0:...)
+    MX: smtp.google.com (prioridad 10)
+    TXT: "v=spf1 include:_spf.google.com ~all", "docusign=..." etc.
+    NS: ns1.google.com, ns2.google.com, etc.
+    CNAME: Error (google.com no es CNAME de nada, pero tiene CNAME reversos)
+    SOA: ns1.google.com, dns-admin.google.com, serial, etc.
+  Interpretacion: Google tiene infraestructura masiva con multiples IPs y
+  servidores. Es el mejor caso para probar el proyecto.
+
+Caso 2.2: GitHub
+  Input: github.com, todos los tipos
+  Resultados esperados:
+    A: 140.82.112.3 (o similar)
+    AAAA: Puede tener IPv6
+    MX: No tiene MX (github.com no maneja su propio correo)
+    TXT: Varios (SPF, verificacion de dominio)
+    NS: ns1.p16.dynect.net, etc. (DNS externalizado en Oracle Dyn)
+    SOA: Informacion de zona Dyn
+  Interpretacion: Dominio moderno que terceriza DNS. Muestra que no todos
+  los dominios tienen MX.
+
+Caso 2.3: Cloudflare
+  Input: cloudflare.com, todos los tipos
+  Resultados esperados:
+    A: IPs de Cloudflare (104.x.x.x)
+    NS: ns3.cloudflare.com, ns4.cloudflare.com, etc.
+    SOA: Informacion de zona Cloudflare
+  Interpretacion: Cloudflare es tanto CDN como DNS autoritativo. Ver sus
+  propios NS es interesante porque son ellos mismos.
+
+================================================================================
+3. DOMINIOS CON CASOS ESPECIALES
+================================================================================
+
+Caso 3.1: Dominio sin MX (no recibe correo)
+  Input: discord.com o twitch.tv
+  Resultado esperado: MX muestra "No records of this type"
+  Interpretacion: Muchos servicios SaaS no reciben correo directamente.
+
+Caso 3.2: Dominio con muchos registros TXT
+  Input: amazon.com o microsoft.com
+  Resultado esperado: Multiples TXT para SPF, DKIM, verificación de dominio
+  Interpretacion: Grandes empresas tienen configuraciones complejas de
+  autenticacion de correo.
+
+Caso 3.3: Dominio con CNAME
+  Input: www.github.com (puede ser CNAME)
+  Resultado esperado: CNAME apuntando a github.com o similar
+  Alternativa: www.mercadolibre.com.ar
+  Interpretacion: Los CNAME son comunes para alias www → dominio principal.
+
+Caso 3.4: Subdominio vs dominio principal
+  Input: mail.google.com
+  Resultado esperado: Puede tener registros diferentes a google.com
+  Interpretacion: Los subdominios son zonas independientes y pueden tener
+  configuraciones completamente distintas.
+
+Caso 3.5: Dominio con TTL alto
+  Buscar un dominio que tenga TTL de 86400 (24h) o mas.
+  Input: cualquier dominio pequeno con hosting basico
+  Interpretacion: TTL alto = cambios poco frecuentes. TTL bajo = esperan
+  cambios (load balancers, failover).
+
+Caso 3.6: Dominio con TTL bajo (60-300s)
+  Input: google.com (TTL alrededor de 300s)
+  Interpretacion: Google espera cambios frecuentes en sus IPs por su
+  infraestructura global de balanceo de carga.
+
+================================================================================
+4. PRUEBAS DE RESOLUCION INVERSA (PTR)
+================================================================================
+
+Caso 4.1: IP de Google DNS
+  Input: 8.8.8.8
+  Resultado esperado: dns.google
+  Interpretacion: Google tiene PTR configurado para su DNS publico.
+
+Caso 4.2: IP de Cloudflare DNS
+  Input: 1.1.1.1
+  Resultado esperado: one.one.one.one o cloudflare-dns.com
+  Interpretacion: Cloudflare tambien tiene PTR.
+
+Caso 4.3: IP sin PTR
+  Input: Una IP aleatoria que no tenga resolucion inversa
+  Ejemplo: 10.0.0.1 (IP privada)
+  Resultado esperado: "No PTR record found for this IP"
+  Interpretacion: No todas las IPs tienen PTR configurado.
+
+Caso 4.4: IP publica residencial
+  Input: La IP de tu casa (consultar con "ipconfig" o similar)
+  Resultado esperado: Depende del ISP. Algunos ISP asignan nombres como
+  "customer-xxx.isp.net"
+  Interpretacion: Los ISPs asignan PTR a sus IPs publicas.
+
+================================================================================
+5. PRUEBAS DE COMPARACION DE RESOLVERS
+================================================================================
+
+Caso 5.1: Google vs Cloudflare vs OpenDNS
+  Input: google.com, tipo A, resolvers: 8.8.8.8, 1.1.1.1, 208.67.222.222
+  Resultado esperado: Todos resuelven la misma IP (o IPs diferentes pero
+  del mismo rango de Google)
+  Interpretacion: Todos los resolvers publicos deben dar la misma respuesta
+  para dominios establecidos.
+
+Caso 5.2: Diferencias de TTL entre resolvers
+  Input: google.com, tipo A, comparar 8.8.8.8 vs 1.1.1.1
+  Resultado esperado: TTL puede variar entre resolvers porque cada uno
+  tiene su propia politica de cache.
+  Interpretacion: El TTL original lo define el servidor autoritativo, pero
+  los resolvers pueden acortarlo por politica interna.
+
+Caso 5.3: Resolver vs Resolver del sistema (omitir servers)
+  Input: github.com, tipo A, con resolver por defecto
+  Comparar con 8.8.8.8
+  Resultado esperado: Deberian coincidir.
+  Interpretacion: El resolver del sistema suele ser el del ISP, que a su
+  vez consulta a los mismos servidores autoritativos.
+
+================================================================================
+6. PRUEBAS DE CACHE
+================================================================================
+
+Caso 6.1: Primera consulta (cache miss)
+  Input: google.com (primera vez que se consulta)
+  Resultado esperado: Respuesta SIN badge "CACHE", tiempo de respuesta
+  normal (50-200ms)
+  Interpretacion: No habia datos en cache, se consulto a DNS real.
+
+Caso 6.2: Segunda consulta inmediata (cache hit)
+  Input: google.com (inmediatamente despues del caso 6.1, mismo dominio,
+  mismos tipos)
+  Resultado esperado: Respuesta CON badge "CACHE", tiempo de respuesta
+  mucho menor (<5ms porque viene de memoria)
+  Interpretacion: El cache funciona, no se hizo consulta DNS real.
+
+Caso 6.3: Cache expirado
+  Input: Esperar 30 segundos, consultar google.com de nuevo
+  Resultado esperado: Respuesta SIN badge "CACHE" (o con badge si aun
+  no expiro, depende del tiempo exacto)
+  Interpretacion: El cache tiene TTL de 30 segundos.
+
+================================================================================
+7. PRUEBAS DE ERRORES
+================================================================================
+
+Caso 7.1: Dominio inexistente (NXDOMAIN)
+  Input: asdfghjkl123456xyz.com
+  Resultado esperado: Todos los registros muestran "NXDOMAIN - Domain does
+  not exist"
+  Interpretacion: El dominio no existe en ningun servidor DNS.
+
+Caso 7.2: Dominio sin registros de tipo especifico (ENODATA)
+  Input: discord.com, solo tipo AAAA
+  (Nota: puede tener AAAA, probar con MX)
+  Input alternativo: Se requiere un dominio que NO tenga un tipo especifico
+  Interpretacion: ENODATA vs NXDOMAIN: el dominio existe, pero no tiene
+  ese tipo particular de registro.
+
+Caso 7.3: IP mal formada
+  Input: 999.999.999.999
+  Resultado esperado: "Formato invalido"
+  Interpretacion: Los octetos deben estar entre 0 y 255.
+
+Caso 7.4: Dominio con path
+  Input: google.com/search
+  Resultado esperado: Se limpia a google.com
+  Interpretacion: La funcion cleanInput() elimina paths.
+
+Caso 7.5: Puerto incluido
+  Input: google.com:8080
+  Resultado esperado: Se limpia a google.com (se quita :8080)
+  Interpretacion: El puerto es parte de la URL, no del dominio.
+
+================================================================================
+8. PRUEBAS DE RATE LIMITING
+================================================================================
+
+Caso 8.1: Exceder limite de requests
+  Input: Hacer mas de 100 requests en menos de 15 minutos desde la misma IP
+  Resultado esperado: Respuesta HTTP 429 con mensaje "Demasiadas solicitudes.
+  Intenta de nuevo en 15 minutos."
+  Interpretacion: El rate limiter protege el servidor contra abusos.
+
+Nota: Para probar rate limiting rapidamente, se puede reducir
+temporalmente el maximo en app.js (ej: max: 3) y hacer 4 requests seguidos.
+
+================================================================================
+9. EJERCICIOS PRACTICOS PARA EL ESTUDIANTE
+================================================================================
+
+Ejercicio 1: "Stack tecnologico de una empresa"
+  Consulta estos dominios y deduce que servicios usan:
+    a) mercadolibre.com (MX → correo, NS → hosting DNS, TXT → SPF)
+    b) globant.com
+    c) despegar.com
+  Preguntas guia:
+    1. Que proveedor de correo usan? (Google Workspace? M365?)
+    2. Quien hostea su DNS? (Cloudflare? AWS Route53? Propio?)
+    3. Tienen SPF configurado? Que servicios incluye?
+
+Ejercicio 2: "Migracion de dominio"
+  Situacion: Tenes que migrar la empresa.com de un hosting a otro.
+  Actividades:
+    1) Consulta los registros A actuales y anota las IPs
+    2) Anota el TTL actual
+    3) Si el TTL es 86400 (24h), que problema tenes?
+    4) Como resolverias el problema antes de migrar?
+  Respuesta: Bajar el TTL a 300 (5 min) varios dias antes de la migracion.
+
+Ejercicio 3: "Propagacion DNS"
+  1) Consulta un dominio contra 8.8.8.8
+  2) Consulta el mismo dominio contra 1.1.1.1
+  3) Consulta contra tu resolver local (sin especificar servers)
+  4) Son iguales las respuestas? El TTL es el mismo?
+  5) Busca un dominio con diferentes resultados entre resolvers
+  (Esto es raro pero puede pasar en dominios con Anycast)
+
+Ejercicio 4: "Infraestructura de correo"
+  1) Consulta los MX de gmail.com, outlook.com, yahoo.com
+  2) Que prioridades tienen? Que dominios de servidores usan?
+  3) Consulta los TXT de cada uno, busca el registro SPF
+  4) Que incluyen? cuantos servidores autorizan?
+
+Ejercicio 5: "DNS inverso"
+  1) Encuentra la IP de google.com (usando tipo A)
+  2) Haz PTR de esa IP
+  3) Coincide el resultado con google.com?
+  4) Prueba con la IP de cloudflare.com
+  5) Prueba con la IP de tu casa (si tenes IP publica fija)
+
+Ejercicio 6: "TTL y cache"
+  1) Consulta un dominio de alta rotacion (ej: google.com)
+  2) Anota el TTL
+  3) Vuelve a consultar inmediatamente (deberia cachear)
+  4) Espera 30 segundos y consulta de nuevo
+  5) Cambio el TTL entre la primera y la ultima consulta? Por que?
+
+Ejercicio 7: "Dominios inexistentes"
+  1) Inventa un dominio que seguro no existe
+  2) Que error devuelve?
+  3) Que diferencia hay entre NXDOMAIN y ENODATA?
+  4) Da un ejemplo de cada uno
+
+Ejercicio 8: "Analisis de SOA"
+  1) Consulta SOA de google.com
+  2) Que significan serial, refresh, retry, expire, minttl?
+  3) Compara con el SOA de un dominio pequeno (ej: tunombre.com si tenes)
+  4) Que diferencias hay en los valores? Por que?
+
+Ejercicio 9: "Seguridad - Detectar DNS Hijacking"
+  1) Configura un resolver custom que sea 8.8.8.8
+  2) Consulta un dominio inexistente
+  3) Si 8.8.8.8 devuelve NXDOMAIN (deberia), esta bien
+  4) Prueba con tu resolver de ISP
+  5) Si tu ISP devuelve una IP con publicidad → DNS hijacking!
+
+Ejercicio 10: "Proyecto integrador"
+  Simula que sos un consultor de seguridad. Te piden auditar la
+  infraestructura DNS de una empresa mediana:
+    1) Lista los registros A (servidores web)
+    2) Lista los registros MX (correo)
+    3) Lista los registros NS (quien hostea el DNS)
+    4) Lista los registros TXT (SPF, DKIM)
+    5) Verifica si tienen DMARC configurado (buscar _dmarc.dominio.com)
+    6) Los TTL son adecuados? (bajos para servidores productivos)
+    7) Que recomendaciones darias?
+
+================================================================================
+                    FIN DE EJEMPLOS DE PRUEBA
+================================================================================
